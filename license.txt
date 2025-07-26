@@ -1,0 +1,15 @@
+BOOMBOX MUSIC APP - LICENSE AGREEMENT
+
+This software is brought to you by a pirate, for pirates.
+
+All rights ignored.
+
+By installing BoomBox, you agree that:
+- You understand what music is.
+- You don’t expect legal protection.
+- You’re not a narc.
+- You will vibe responsibly.
+
+If any of this offends you, uninstall this software and set your computer on fire.
+
+— BoomBox Crew 🏴‍☠️
