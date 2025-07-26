@@ -40,6 +40,8 @@ Alright, alright. Before you jump in — read the notes below 👇
 
 ---
 
+Download the latest version [HERE](https://github.com/Ronnie-Reagan/BoomBox/releases/tag/BoomBox)
+
 ## 🛠️ For Developers
 
 Hey boss man, thanks for stopping by. This isn’t Harvard-tier code, but it’s more than enough to build on.
