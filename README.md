@@ -55,6 +55,7 @@ Pull requests welcome. Respect the code, or at least vibe with it.
 
 - **Huge Note:** You will have to download ffmpeg and the other two binaries manually.
 - You must then place the three binaries into the bin folder, a few layers inside the `THIS_FOLDER_MUS..` folder.
+- Example Directory Tree Below
 
 ### 1. 📦 Dependencies
 
@@ -82,16 +83,84 @@ pyinstaller ^
   --windowed ^
   --name "BoomBox" ^
   --icon="favicon.ico" ^
-  --add-data="THIS_FOLDER_MUST_BE_HERE/." ^
+  --add-data="THIS_FOLDER_MUST_BE_HERE;." ^
+  --add-data="favicon.ico;." ^
   --noconfirm ^
   --clean ^
-  pydubmain.py
+main.py
 ```
 
 This produces:  
 ✅ `dist/BoomBox.exe`  
 ✅ Fully portable  
 ✅ No installer required  
+
+---
+
+
+#### Suggested Working Directory - Use this as a reference to ensure you have proper placement.
+```
+C:.
+│   build_boombox.bat
+│   favicon.ico
+│   license.txt
+│   main.py
+│   README.md
+│   requirements.txt
+│
+└───THIS_FOLDER_MUST_BE_HERE
+    └───ffmpeg-full
+        │   LICENSE
+        │   README.txt
+        │
+        ├───bin
+        │       ffmpeg.exe
+        │       ffplay.exe
+        │       ffprobe.exe
+        │
+        ├───doc
+        │       bootstrap.min.css
+        │       community.html
+        │       default.css
+        │       developer.html
+        │       faq.html
+        │       fate.html
+        │       ffmpeg-all.html
+        │       ffmpeg-bitstream-filters.html
+        │       ffmpeg-codecs.html
+        │       ffmpeg-devices.html
+        │       ffmpeg-filters.html
+        │       ffmpeg-formats.html
+        │       ffmpeg-protocols.html
+        │       ffmpeg-resampler.html
+        │       ffmpeg-scaler.html
+        │       ffmpeg-utils.html
+        │       ffmpeg.html
+        │       ffplay-all.html
+        │       ffplay.html
+        │       ffprobe-all.html
+        │       ffprobe.html
+        │       general.html
+        │       git-howto.html
+        │       libavcodec.html
+        │       libavdevice.html
+        │       libavfilter.html
+        │       libavformat.html
+        │       libavutil.html
+        │       libswresample.html
+        │       libswscale.html
+        │       mailing-list-faq.html
+        │       nut.html
+        │       platform.html
+        │       style.min.css
+        │
+        └───presets
+                libvpx-1080p.ffpreset
+                libvpx-1080p50_60.ffpreset
+                libvpx-360p.ffpreset
+                libvpx-720p.ffpreset
+                libvpx-720p50_60.ffpreset
+```
 
 ---
 
