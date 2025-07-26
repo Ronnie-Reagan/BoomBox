@@ -6,51 +6,92 @@
 
 ## 🧭 Introduction
 
-BoomBox started as a desktop version of a Discord bot... but it's grown into something much more.  
+BoomBox started as a desktop version of a Discord bot... but it evolved.
+
 It now features:
 
-- Custom dark UI theme (built on tkinter)
-- YouTube search integration with multi-result selection
-- MP3 & MP4 download options
-- Queue management, volume control, playback position seeking
-- Fully portable or installable versions available
+- 🔍 YouTube search with multi-result support  
+- 🎵 MP3 & MP4 download options  
+- 📂 Files saved directly to your system’s Music folder  
+- 🎛️ Playback controls: pause, seek, volume, queue system  
+- 💄 Custom punk rock + hip hop dark UI built on tkinter  
+- 🧊 Fully self-contained: just one EXE + FFmpeg folder  
 
 ---
 
-## 👤 For Users
+## 📦 Download
 
-Thanks for trusting me with your machine. I don’t take that lightly.
+👉 [**Download the latest release here**](https://github.com/Ronnie-Reagan/BoomBox/releases/tag/BoomBox)
 
-This app contains **zero malware**, **no telemetry**, and **no sketchy background stuff**.  
-I do my best to test thoroughly before a release — but hey, bugs slip through sometimes.
-
-> _"Just give me the damn app already!"_
-
-Alright, alright. Before you jump in — read the notes below 👇
+Extract the contents into any folder and run `BoomBox.exe`.
 
 ---
 
-## 💡 Notes
+## 🧠 Notes for Users
 
-- All music is saved to your system’s **default Music folder**
-- Files are saved using the **video title** as the filename
-- YouTube **rate limits heavy downloaders**
-  - 🔥 Try to stick to ~15–20 downloads per hour to avoid throttling
-- ❌ Currently no "cancel download" button (close the app if you must stop it mid-task — for now)
+- Music is saved to your Windows **Music** folder (`C:\Users\<you>\Music`)  
+- Songs are named after the YouTube video title  
+- If you download too many songs too fast, **YouTube may rate-limit you**  
+  - Tip: Stick to **15–20 songs per hour**  
+- There's **no "cancel download"** yet — close the app to stop one in progress  
 
 ---
-
-Download the latest version [HERE](https://github.com/Ronnie-Reagan/BoomBox/releases/tag/BoomBox)
 
 ## 🛠️ For Developers
 
-Hey boss man, thanks for stopping by. This isn’t Harvard-tier code, but it’s more than enough to build on.
+Hey boss — this ain’t Ivy League code, but it runs clean.
 
-- Feel free to fork the repo, improve the code, or skin it with your own themes
-- PRs are welcome if you make **meaningful changes**
-- Yeah, some logic’s a little scattered, but if it doesn’t throw — it flies
+The codebase is:  
+- ✅ Easy to understand  
+- ✅ Fully hackable  
+- ✅ GUI included (no console window)  
+- ✅ Tested with PyInstaller onefile build  
 
-If you want to help make BoomBox better — even just visually — you're more than welcome.
+Pull requests welcome. Respect the code, or at least vibe with it.
+
+---
+
+## 🚀 Build It Yourself
+
+- **Huge Note:** You will have to download ffmpeg and the other two binaries manually.
+- You must then place the three binaries into the bin folder, a few layers inside the `THIS_FOLDER_MUS..` folder.
+
+### 1. 📦 Dependencies
+
+Install with:
+
+```
+pip install -r requirements.txt
+```
+
+---
+
+### 2. 🔨 Build the App
+
+Run the included build script:
+
+```
+build_boombox.bat
+```
+
+This uses:
+
+```
+pyinstaller ^
+  --onefile ^
+  --windowed ^
+  --name "BoomBox" ^
+  --icon="favicon.ico" ^
+  --add-data="THIS_FOLDER_MUST_BE_HERE/." ^
+  --noconfirm ^
+  --clean ^
+  pydubmain.py
+```
+
+This produces:  
+✅ `dist/BoomBox.exe`  
+✅ Fully portable  
+✅ No installer required  
 
 ---
 
@@ -59,4 +100,3 @@ If you want to help make BoomBox better — even just visually — you're more t
 > All rights ignored.  
 > Built by a pirate, for pirates.  
 > Just vibe responsibly.
-
