@@ -58,6 +58,9 @@ Pull requests welcome. Respect the code, or at least vibe with it.
 - Example Directory Tree Below
 
 ### 1. 📦 Dependencies
+FFMPEG IS REQUIRED:
+https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+follow the layout shown below!
 
 Install with:
 
