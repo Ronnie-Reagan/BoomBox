@@ -57,12 +57,13 @@ Pull requests welcome. Respect the code, or at least vibe with it.
 - You must then place the three binaries into the bin folder, a few layers inside the `THIS_FOLDER_MUS..` folder.
 - Example Directory Tree Below
 
+---
 ### 1. 📦 Dependencies
 FFMPEG IS REQUIRED:
 https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
-follow the layout shown below!
+follow the layout shown at the bottom of this page!
 
-Install with:
+Install Python libraries with:
 
 ```
 pip install -r requirements.txt
