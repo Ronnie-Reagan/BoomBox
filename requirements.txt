@@ -1,4 +1,3 @@
 yt-dlp
 pygame
-pydub
 mutagen
