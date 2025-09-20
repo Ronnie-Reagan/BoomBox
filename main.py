@@ -27,14 +27,12 @@ def get_ffmpeg_path():
     if os.path.exists(os.path.join(external_path, "ffmpeg.exe")):
         return external_path
 
-    # Final fallback: warn and return empty
+    # Final fallback: warn and exit
     from tkinter import messagebox
     messagebox.showerror("Missing FFmpeg", "FFmpeg binaries not found in internal or external paths.\n\nExpected:\n- ffmpeg-full/bin/ffmpeg.exe")
     sys.exit(1)
 
-
 FFMPEG_PATH = get_ffmpeg_path()
-
 if not os.path.exists(os.path.join(FFMPEG_PATH, "ffmpeg.exe")):
     from tkinter import messagebox
     messagebox.showerror("Missing FFmpeg", "FFmpeg binaries not found.\n\nPlease ensure THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffmpeg.exe exists next to this app.")
@@ -43,16 +41,15 @@ if not os.path.exists(os.path.join(FFMPEG_PATH, "ffmpeg.exe")):
 class ConsoleRedirector(io.TextIOBase):
     def __init__(self, text_widget):
         self.text_widget = text_widget
-
         # Define color tags
-        self.text_widget.tag_config("error", foreground="#ff4c4c")        # Red
-        self.text_widget.tag_config("warning", foreground="#ffc107")      # Yellow
-        self.text_widget.tag_config("download", foreground="#4cff4c")     # Lime green
-        self.text_widget.tag_config("ffmpeg", foreground="#4ca6ff")       # Light blue
-        self.text_widget.tag_config("extract", foreground="#da70d6")      # Orchid
-        self.text_widget.tag_config("info", foreground="#aaaaaa")         # Gray
-        self.text_widget.tag_config("complete", foreground="#00ffff")     # Cyan
-        self.text_widget.tag_config("default", foreground="#ffffff")      # White
+        self.text_widget.tag_config("error", foreground="#ff4c4c")
+        self.text_widget.tag_config("warning", foreground="#ffc107")
+        self.text_widget.tag_config("download", foreground="#4cff4c")
+        self.text_widget.tag_config("ffmpeg", foreground="#4ca6ff")
+        self.text_widget.tag_config("extract", foreground="#da70d6")
+        self.text_widget.tag_config("info", foreground="#aaaaaa")
+        self.text_widget.tag_config("complete", foreground="#00ffff")
+        self.text_widget.tag_config("default", foreground="#ffffff")
 
     def write(self, message):
         self.text_widget.after(0, self._write, message)
@@ -61,14 +58,12 @@ class ConsoleRedirector(io.TextIOBase):
         if "\r" in message:
             self.text_widget.delete("end-2l", "end-1l")
             message = message.split("\r")[-1]
-
         tag = self.get_tag_for_line(message)
         self.text_widget.insert("end", message, tag)
         self.text_widget.see("end")
 
     def get_tag_for_line(self, message):
         lowered = message.lower()
-
         if "[error]" in lowered or "error" in lowered or "exception" in lowered:
             return "error"
         elif "[warning]" in lowered or "warning" in lowered:
@@ -89,33 +84,24 @@ class ConsoleRedirector(io.TextIOBase):
     def flush(self):
         pass
 
-
 class YTDLRedirectLogger:
     def __init__(self, redirector):
         self.redirector = redirector
-
-    def debug(self, msg):
-        self.redirector.write(msg + "\n")
-
-    def warning(self, msg):
-        self.redirector.write("WARNING: " + msg + "\n")
-
-    def error(self, msg):
-        self.redirector.write("ERROR: " + msg + "\n")
-
+    def debug(self, msg): self.redirector.write(msg + "\n")
+    def warning(self, msg): self.redirector.write("WARNING: " + msg + "\n")
+    def error(self, msg): self.redirector.write("ERROR: " + msg + "\n")
 
 def safePrint(*args, **kwargs):
     message = " ".join(str(arg) for arg in args)
     print(message, **kwargs)
     if "error" in message.lower() or "exception" in message.lower():
-        notebook.select(log_frame)  # auto-focus log tab
+        notebook.select(log_frame)
 
-# Set up paths
+# Paths
 MUSIC_FOLDER = os.path.join(os.path.expanduser("~"), "Music")
 os.makedirs(MUSIC_FOLDER, exist_ok=True)
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller onefile """
     try:
         base_path = sys._MEIPASS
     except AttributeError:
@@ -133,7 +119,6 @@ song_length = 0
 start_time = 0
 is_seeking = False
 
-
 # UI Setup
 root = Tk()
 root.title("BoomBox by Don")
@@ -143,7 +128,6 @@ root.iconbitmap(icon_path)
 
 notebook = Notebook(root)
 notebook.pack(fill="both", expand=True)
-
 main_frame = Frame(notebook, bg="#121212")
 log_frame = Frame(notebook, bg="#1e1e1e")
 
@@ -152,13 +136,12 @@ log_text.pack(fill="both", expand=True, padx=5, pady=5)
 
 redirector = ConsoleRedirector(log_text)
 logger = YTDLRedirectLogger(redirector)
-
 sys.stdout = redirector
 sys.stderr = redirector
 
 notebook.add(main_frame, text="Player")
 notebook.add(log_frame, text="Console Output")
-main_frame.configure(bg="#121212")  # Matte black
+main_frame.configure(bg="#121212")
 
 default_font = ("Segoe UI", 10)
 
@@ -198,7 +181,6 @@ LISTBOX_STYLE = {
     "highlightbackground": "#393939",
     "font": default_font
 }
-
 
 SCALE_STYLE = {
     "bg": "#121212",
@@ -272,7 +254,6 @@ volume_slider = Scale(
 volume_slider.set(50)
 volume_slider.pack(side="left", fill="x", expand=True)
 
-
 playback_slider = Scale(main_frame, from_=0, to=1000, orient=HORIZONTAL, length=400, showvalue=False, **SCALE_STYLE)
 playback_slider.pack(pady=(2, 15))
 def start_seeking(event):
@@ -286,8 +267,6 @@ def stop_seeking(event):
 
 playback_slider.bind("<ButtonPress-1>", start_seeking)
 playback_slider.bind("<ButtonRelease-1>", stop_seeking)
-
-
 
 controls = Frame(main_frame, bg="#121212")
 controls.pack(pady=(2, 5))
@@ -345,9 +324,9 @@ def ytdl_progress_hook(status):
         percent = status.get('_percent_str', '').strip()
         speed = status.get('_speed_str', '')
         eta = status.get('_eta_str', '')
-        print(f"Downloading: {percent} at {speed} ETA {eta}")
+        safePrint(f"Downloading: {percent} at {speed} ETA {eta}")
     elif status['status'] == 'finished':
-        print("Download complete.")
+        safePrint("Download complete.")
 
 # Download from YouTube
 def download_audio(url, title, downloadType):
@@ -419,7 +398,6 @@ def seek_to_position(value):
     except Exception as e:
         safePrint("[ERROR] Seek failed:", e)
 
-
 def update_queue_display():
     queue_list.delete(0, "end")
     for song in queue:
@@ -432,15 +410,16 @@ def play_song():
         is_paused = False
         pygame.mixer.music.unpause()
         start_time = time.time() - playback_position
+        update_discord_status(state="Now Playing", song_title=current_song, paused=False, reset_time=False)
         return
 
     if not queue:
         now_playing_label.config(text="Now Playing: None")
+        update_discord_status(state="Idle", song_title=None)
         return
 
     current_song = queue.pop(0)
     song_path = os.path.join(MUSIC_FOLDER, current_song)
-
     try:
         pygame.mixer.music.load(song_path)
         pygame.mixer.music.play()
@@ -448,6 +427,8 @@ def play_song():
         playback_position = 0
         start_time = time.time()
         now_playing_label.config(text=f"Now Playing: {current_song}")
+        update_discord_status(state="Now Playing", song_title=current_song, paused=False, reset_time=True)
+
     except Exception as e:
         safePrint("[ERROR]  playing file:", e)
         current_song = None
@@ -455,13 +436,15 @@ def play_song():
     update_queue_display()
 
 def pause_song():
-    global is_paused, playback_position
+    global is_paused, playback_position, current_song
     if pygame.mixer.music.get_busy():
         pygame.mixer.music.pause()
+        update_discord_status(state="Paused", song_title=current_song, paused=True)
         is_paused = True
         playback_position = time.time() - start_time
 
 def skip_song():
+    global current_song
     if pygame.mixer.music.get_busy():
         pygame.mixer.music.stop()
     play_song()
@@ -478,10 +461,13 @@ def add_to_queue(position="end"):
         return
     file_name = local_songs_list.get(selected_index)
     if position == "now":
-        shouldSkip = current_song == None and False or True
+        shouldSkip = current_song != None
         queue.insert(0, file_name)
         if shouldSkip:
             skip_song()
+            return
+        else:
+            update_discord_status(state="Now Playing", song_title=file_name, paused=False, reset_time=True)
     elif position == "next":
         queue.insert(0, file_name)
     else:
@@ -497,7 +483,97 @@ Button(controls, text="Pause", command=pause_song, **DARK_STYLE).pack(side="left
 Button(controls, text="Skip", command=skip_song, **DARK_STYLE).pack(side="left", padx=5)
 Button(controls, text="Back", command=previous_song, **DARK_STYLE).pack(side="left", padx=5)
 
+# === Discord RPC Setup ===
+try:
+    from pypresence import Presence
+    import atexit
 
+    DISCORD_APP_ID = "1331776648890159164"
+    rpc = Presence(DISCORD_APP_ID)
+    try:
+        rpc.connect()
+    except Exception as e:
+        safePrint(f"[RPC Disabled at connect] {e}")
+        rpc = None
+
+    rpc_song_start_time = 0
+    rpc_current_song = None
+
+    # === RPC throttle control ===
+    heldRPC = None
+    lastRpcPayloadTime = 0
+    rpcLock = threading.Lock()
+
+    def cleanup_rpc():
+        global rpc
+        if rpc:
+            try:
+                rpc.clear()
+            except Exception as e:
+                safePrint(f"[RPC ERROR on exit] {e}")
+
+    atexit.register(cleanup_rpc)
+
+    def rpc_worker():
+        global heldRPC, lastRpcPayloadTime, rpc
+        while True:
+            if rpc:
+                with rpcLock:
+                    if heldRPC and (time.time() - lastRpcPayloadTime) >= 15:
+                        try:
+                            rpc.update(**heldRPC)
+                            lastRpcPayloadTime = time.time()
+                            heldRPC = None
+                        except Exception as e:
+                            safePrint(f"[RPC ERROR] {e}")
+                            heldRPC = None
+            time.sleep(1)
+
+    threading.Thread(target=rpc_worker, daemon=True).start()
+
+except Exception as e:
+    rpc = None
+    rpc_song_start_time = 0
+    rpc_current_song = None
+    heldRPC = None
+    rpcLock = threading.Lock()
+    print(f"[RPC Disabled] {e}")
+
+def format_song_title(song_title):
+    if not song_title:
+        return "Idle"
+    name = song_title.replace(".mp3", "")
+    name = re.sub(r"[_%]+", " ", name)
+    return name.strip()
+
+def update_discord_status(state="Idle", song_title=None, paused=False, reset_time=False):
+    global rpc_song_start_time, rpc_current_song, current_song, rpc, heldRPC, rpcLock
+
+    if not rpc:
+        return
+
+    if reset_time or song_title != rpc_current_song:
+        rpc_song_start_time = int(time.time())
+        rpc_current_song = song_title
+
+    payload = {
+        "state": f"{format_song_title(current_song)}" if song_title else state,
+        "details": state,
+        "large_image": "embedded_cover",
+        "large_text": "BoomBox by Don",
+        "small_image": "flag_of_canada",
+        "small_text": "Made in Canada 🍁",
+        "buttons": [{"label": "Get BoomBox", "url": "https://github.com/Ronnie-Reagan/BoomBox"}]
+    }
+
+    if not paused and song_title:
+        payload["start"] = rpc_song_start_time
+
+    with rpcLock:
+        heldRPC = payload
+
+# === Startup ===
+update_discord_status()
 load_local_songs()
 update_playback_bar()
 main_frame.mainloop()

@@ -1,0 +1,7 @@
+THIS_FOLDER_MUST_BE_HERE/ffmpeg-full
+ideas.md
+__pycache__
+build
+dist
+BoomBox 2.0.spec
+ogmain.py

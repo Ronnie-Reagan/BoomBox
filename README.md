@@ -62,12 +62,21 @@ FFMPEG IS REQUIRED:
 https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
 follow the layout shown below!
 
-Install with:
+Install with python dependencies with:
 
 ```
 pip install -r requirements.txt
 ```
 
+This uses:
+
+```
+yt-dlp
+pygame
+pydub
+mutagen
+pypresence
+```
 ---
 
 ### 2. 🔨 Build the App
@@ -84,7 +93,7 @@ This uses:
 pyinstaller ^
   --onefile ^
   --windowed ^
-  --name "BoomBox" ^
+  --name "BoomBox 2.0" ^
   --icon="favicon.ico" ^
   --add-data="THIS_FOLDER_MUST_BE_HERE;." ^
   --add-data="favicon.ico;." ^

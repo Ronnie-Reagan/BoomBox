@@ -21,7 +21,7 @@ echo "|____|____|____|____|____|____|____|____|____|____|____|____|____|____|___
 pyinstaller ^
   --onefile ^
   --windowed ^
-  --name "BoomBox" ^
+  --name "BoomBox 2.0" ^
   --icon="favicon.ico" ^
   --add-data="THIS_FOLDER_MUST_BE_HERE;." ^
   --add-data="favicon.ico;." ^
@@ -29,6 +29,6 @@ pyinstaller ^
   --clean ^
 main.py
 
-echo.
-echo Build complete. EXE is in the /dist folder.
+echo "";
+echo "Build complete. EXE is in the /dist folder.";
 pause

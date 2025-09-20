@@ -1,0 +1,1 @@
+If you are building or running this app from source, place a folder named `ffmpeg-full` next to this .txt file, and extract the full ffmpeg install to it from https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
