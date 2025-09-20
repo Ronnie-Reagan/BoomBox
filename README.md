@@ -23,7 +23,7 @@ It now features:
 
 👉 [**Download the latest release here**](https://github.com/Ronnie-Reagan/BoomBox/releases/tag/BoomBox)
 
-Just download the standalone exe: `BoomBox.exe`.
+Just download the standalone exe: `BoomBox 2.0.exe`.
 
 ---
 
