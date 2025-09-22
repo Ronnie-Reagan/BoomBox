@@ -15,7 +15,7 @@ It now features:
 - 📂 Files saved directly to your system’s Music folder  
 - 🎛️ Playback controls: pause, seek, volume, queue system  
 - 💄 Custom punk rock + hip hop dark UI built on tkinter  
-- 🧊 Fully self-contained: just one EXE + FFmpeg folder  
+- 🧊 Fully self-contained: just one EXE 
 
 ---
 
