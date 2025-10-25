@@ -3,3 +3,4 @@ pygame
 pydub
 mutagen
 pypresence
+PyQt5
