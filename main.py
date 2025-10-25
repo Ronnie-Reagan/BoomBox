@@ -1,70 +1,117 @@
-import os
-import glob
-import yt_dlp
-import threading
-from tkinter import Tk, Label, Entry, Button, Listbox, HORIZONTAL, Scale, Frame, Text, END
-from tkinter.ttk import Notebook
-import pygame
-import re
-from mutagen.mp3 import MP3
-import time
-import sys
-import io
+# boombox_pyqt.py
+# Run: pip install PyQt5 pygame mutagen yt-dlp pypresence
+# Notes:
+# - Keeps your function names and global state where feasible.
+# - Uses a frameless, translucent window with rounded mask and custom painting.
+# - Replaces Tk widgets with PyQt5 equivalents. Logging uses QTextEdit with colored lines.
+# - Uses QTimer instead of Tk .after. Threading stays via threading.Thread.
 
+import os, sys, io, re, glob, time, threading
+import yt_dlp
+import pygame
+from mutagen.mp3 import MP3
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+Qt = QtCore.Qt
+
+# ------------------------------ Pygame init ------------------------------
 pygame.mixer.init()
 
+# ------------------------------ FFmpeg path ------------------------------
 def get_ffmpeg_path():
-    # When running as a bundled EXE with --add-data
     if getattr(sys, 'frozen', False):
         internal_path = os.path.join(sys._MEIPASS, "ffmpeg-full", "bin")
         if os.path.exists(os.path.join(internal_path, "ffmpeg.exe")):
             return internal_path
-
-    # Fallback: external layout (py file or manually placed)
     base_path = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
     external_path = os.path.join(base_path, "THIS_FOLDER_MUST_BE_HERE", "ffmpeg-full", "bin")
-
     if os.path.exists(os.path.join(external_path, "ffmpeg.exe")):
         return external_path
-
-    # Final fallback: warn and exit
-    from tkinter import messagebox
-    messagebox.showerror("Missing FFmpeg", "FFmpeg binaries not found in internal or external paths.\n\nExpected:\n- ffmpeg-full/bin/ffmpeg.exe")
+    QtWidgets.QMessageBox.critical(None, "Missing FFmpeg",
+        "FFmpeg binaries not found in internal or external paths.\n\nExpected:\n- ffmpeg-full/bin/ffmpeg.exe")
     sys.exit(1)
 
 FFMPEG_PATH = get_ffmpeg_path()
 if not os.path.exists(os.path.join(FFMPEG_PATH, "ffmpeg.exe")):
-    from tkinter import messagebox
-    messagebox.showerror("Missing FFmpeg", "FFmpeg binaries not found.\n\nPlease ensure THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffmpeg.exe exists next to this app.")
+    QtWidgets.QMessageBox.critical(None, "Missing FFmpeg",
+        "FFmpeg binaries not found.\n\nPlease ensure THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffmpeg.exe exists next to this app.")
     sys.exit(1)
 
+# ------------------------------ Globals kept ------------------------------
+search_results = []
+queue = []
+current_song = None
+is_paused = False
+playback_position = 0
+song_length = 0
+start_time = 0
+is_seeking = False
+
+rpc = None
+rpc_song_start_time = 0
+rpc_current_song = None
+heldRPC = None
+lastRpcPayloadTime = 0
+rpcLock = threading.Lock()
+
+# ------------------------------ Util ------------------------------
+def sanitize_filename(filename):
+    return re.sub(r'[<>:"/\\|?*]', '_', filename)
+
+def format_song_title(song_title):
+    if not song_title:
+        return "Idle"
+    name = song_title.replace(".mp3", "")
+    name = re.sub(r"[_%]+", " ", name)
+    return name.strip()
+
+# ------------------------------ Logging redirect ------------------------------
 class ConsoleRedirector(io.TextIOBase):
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-        # Define color tags
-        self.text_widget.tag_config("error", foreground="#ff4c4c")
-        self.text_widget.tag_config("warning", foreground="#ffc107")
-        self.text_widget.tag_config("download", foreground="#4cff4c")
-        self.text_widget.tag_config("ffmpeg", foreground="#4ca6ff")
-        self.text_widget.tag_config("extract", foreground="#da70d6")
-        self.text_widget.tag_config("info", foreground="#aaaaaa")
-        self.text_widget.tag_config("complete", foreground="#00ffff")
-        self.text_widget.tag_config("default", foreground="#ffffff")
+    COLORS = {
+        "error": "#ff4c4c",
+        "warning": "#ffc107",
+        "download": "#4cff4c",
+        "ffmpeg": "#4ca6ff",
+        "extract": "#da70d6",
+        "info": "#aaaaaa",
+        "complete": "#00ffff",
+        "default": "#ffffff",
+    }
+    def __init__(self, text_edit: QtWidgets.QTextEdit, log_tab_widget: QtWidgets.QTabWidget, log_index: int):
+        self.text_edit = text_edit
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setFont(QtGui.QFont("Consolas", 9))
+        self.log_tab_widget = log_tab_widget
+        self.log_index = log_index
 
     def write(self, message):
-        self.text_widget.after(0, self._write, message)
+        # defer to main GUI thread safely
+        def append():
+            html = self._format_html(message)
+            self.text_edit.append(html)
+            self.text_edit.verticalScrollBar().setValue(
+                self.text_edit.verticalScrollBar().maximum()
+            )
+        QtCore.QTimer.singleShot(0, append)
 
-    def _write(self, message):
+    def flush(self):
+        pass
+
+    def _format_html(self, message: str) -> str:
         if "\r" in message:
-            self.text_widget.delete("end-2l", "end-1l")
             message = message.split("\r")[-1]
         tag = self.get_tag_for_line(message)
-        self.text_widget.insert("end", message, tag)
-        self.text_widget.see("end")
+        color = self.COLORS.get(tag, self.COLORS["default"])
+        safe = QtGui.QTextDocument().toPlainText  # not used; message assumed plain
+        # Simple escape
+        esc = (message.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;"))
+        return f'<span style="color:{color}">{esc}</span>'
 
-    def get_tag_for_line(self, message):
+    def get_tag_for_line(self, message: str):
         lowered = message.lower()
         if "[error]" in lowered or "error" in lowered or "exception" in lowered:
+            # focus console tab on error
+            QtCore.QTimer.singleShot(0, lambda: self.log_tab_widget.setCurrentIndex(self.log_index))
             return "error"
         elif "[warning]" in lowered or "warning" in lowered:
             return "warning"
@@ -76,13 +123,10 @@ class ConsoleRedirector(io.TextIOBase):
             return "extract"
         elif "complete" in lowered or "deleting original file" in lowered:
             return "complete"
-        elif "[youtube]" in lowered or "[info]" in lowered:
+        elif "[youtube]" in lowered or "[info]" in lowered or "info:" in lowered:
             return "info"
         else:
             return "default"
-
-    def flush(self):
-        pass
 
 class YTDLRedirectLogger:
     def __init__(self, redirector):
@@ -91,489 +135,542 @@ class YTDLRedirectLogger:
     def warning(self, msg): self.redirector.write("WARNING: " + msg + "\n")
     def error(self, msg): self.redirector.write("ERROR: " + msg + "\n")
 
-def safePrint(*args, **kwargs):
-    message = " ".join(str(arg) for arg in args)
-    print(message, **kwargs)
-    if "error" in message.lower() or "exception" in message.lower():
-        notebook.select(log_frame)
-
-# Paths
-MUSIC_FOLDER = os.path.join(os.path.expanduser("~"), "Music")
-os.makedirs(MUSIC_FOLDER, exist_ok=True)
-
-def resource_path(relative_path):
+# ------------------------------ Discord RPC ------------------------------
+def start_rpc():
+    global rpc
     try:
-        base_path = sys._MEIPASS
-    except AttributeError:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-icon_path = resource_path("favicon.ico")
-
-# Global state
-queue = []
-current_song = None
-is_paused = False
-playback_position = 0
-song_length = 0
-start_time = 0
-is_seeking = False
-
-# UI Setup
-root = Tk()
-root.title("BoomBox by Don")
-root.geometry("690x870")
-root.configure(bg="#121212")
-root.iconbitmap(icon_path)
-
-notebook = Notebook(root)
-notebook.pack(fill="both", expand=True)
-main_frame = Frame(notebook, bg="#121212")
-log_frame = Frame(notebook, bg="#1e1e1e")
-
-log_text = Text(log_frame, bg="#1e1e1e", fg="#69ff3b", insertbackground="#69ff3b", font=("Consolas", 8), wrap="none")
-log_text.pack(fill="both", expand=True, padx=5, pady=5)
-
-redirector = ConsoleRedirector(log_text)
-logger = YTDLRedirectLogger(redirector)
-sys.stdout = redirector
-sys.stderr = redirector
-
-notebook.add(main_frame, text="Player")
-notebook.add(log_frame, text="Console Output")
-main_frame.configure(bg="#121212")
-
-default_font = ("Segoe UI", 10)
-
-DARK_STYLE = {
-    "bg": "#1e1e1e",
-    "fg": "#ffffff",
-    "activebackground": "#ff5c5c",
-    "activeforeground": "#ffffff",
-    "relief": "flat",
-    "bd": 1,
-    "font": default_font,
-}
-
-LABEL_STYLE = {
-    "bg": "#121212",
-    "fg": "#ff3b3b",
-    "font": ("Segoe UI", 10, "bold")
-}
-
-ENTRY_STYLE = {
-    "bg": "#1e1e1e",
-    "fg": "#ffffff",
-    "insertbackground": "#ff3b3b",
-    "relief": "flat",
-    "highlightthickness": 1,
-    "highlightbackground": "#393939",
-    "font": default_font
-}
-
-LISTBOX_STYLE = {
-    "bg": "#1e1e1e",
-    "fg": "#ffffff",
-    "selectbackground": "#ff3b3b",
-    "selectforeground": "#000000",
-    "relief": "flat",
-    "highlightthickness": 1,
-    "highlightbackground": "#393939",
-    "font": default_font
-}
-
-SCALE_STYLE = {
-    "bg": "#121212",
-    "highlightthickness": 0,
-    "troughcolor": "#2c2c2c",
-    "activebackground": "#ff3b3b",
-    "sliderrelief": "flat"
-}
-
-Label(main_frame, text="BoomBox by Don", **LABEL_STYLE).pack()
-search_entry = Entry(main_frame, width=50, **ENTRY_STYLE)
-search_entry.insert(0, "Search for a song...")
-search_entry.pack(pady=3)
-
-def clear_placeholder(event):
-    if search_entry.get() == "Search for a song...":
-        search_entry.delete(0, "end")
-        search_entry.config(fg="#ffffff")
-
-def restore_placeholder(event):
-    if not search_entry.get():
-        search_entry.insert(0, "Search for a song...")
-        search_entry.config(fg="#888888")
-
-search_entry.bind("<FocusIn>", clear_placeholder)
-search_entry.bind("<FocusOut>", restore_placeholder)
-search_entry.config(fg="#888888")
-Button(main_frame, text="Search", command=lambda: search_youtube(search_entry.get()), **DARK_STYLE).pack()
-
-results_list = Listbox(main_frame, width=90, height=5, **LISTBOX_STYLE)
-results_list.pack(pady=3)
-download_frame = Frame(main_frame, bg="#121212")
-download_frame.pack(pady=5)
-
-Button(download_frame, text="Download MP3", command=lambda: download_selected(1), **DARK_STYLE).pack(side="left", padx=5)
-Button(download_frame, text="Download BOTH", command=lambda: download_selected(2), **DARK_STYLE).pack(side="left", padx=5)
-Button(download_frame, text="Download MP4", command=lambda: download_selected(3), **DARK_STYLE).pack(side="left", padx=5)
-
-Label(main_frame, text="Local Songs:", **LABEL_STYLE).pack(pady=(10, 0))
-local_songs_list = Listbox(main_frame, width=90, height=15, **LISTBOX_STYLE)
-local_songs_list.pack(pady=2)
-
-queue_controls = Frame(main_frame, bg="#121212")
-queue_controls.pack(pady=(2, 2))
-
-Button(queue_controls, text="Play Next", command=lambda: add_to_queue("next"), **DARK_STYLE).pack(side="left", padx=5)
-Button(queue_controls, text="Play Now", command=lambda: add_to_queue("now"), **DARK_STYLE).pack(side="left", padx=5)
-Button(queue_controls, text="Add to End", command=lambda: add_to_queue(), **DARK_STYLE).pack(side="left", padx=5)
-
-Label(main_frame, text="Queue:", **LABEL_STYLE).pack(pady=(10, 0))
-queue_list = Listbox(main_frame, width=90, height=5, **LISTBOX_STYLE)
-queue_list.pack(pady=2)
-
-now_playing_label = Label(main_frame, text="Now Playing: None", font=("Segoe UI", 11, "bold"), bg="#121212", fg="#ffffff")
-now_playing_label.pack(pady=(10, 5))
-
-volume_frame = Frame(main_frame, bg="#121212")
-volume_frame.pack(padx=10)
-
-Label(volume_frame, text="Volume", **LABEL_STYLE).pack(side="left", padx=(0, 10))
-
-volume_slider = Scale(
-    volume_frame,
-    from_=0,
-    to=100,
-    orient=HORIZONTAL,
-    showvalue=True,
-    command=lambda v: set_volume(int(v)),
-    **SCALE_STYLE
-)
-volume_slider.set(50)
-volume_slider.pack(side="left", fill="x", expand=True)
-
-playback_slider = Scale(main_frame, from_=0, to=1000, orient=HORIZONTAL, length=400, showvalue=False, **SCALE_STYLE)
-playback_slider.pack(pady=(2, 15))
-def start_seeking(event):
-    global is_seeking
-    is_seeking = True
-
-def stop_seeking(event):
-    global is_seeking
-    is_seeking = False
-    seek_to_position(playback_slider.get())
-
-playback_slider.bind("<ButtonPress-1>", start_seeking)
-playback_slider.bind("<ButtonRelease-1>", stop_seeking)
-
-controls = Frame(main_frame, bg="#121212")
-controls.pack(pady=(2, 5))
-
-# playtime bar with seek, handles next song queueing
-def update_playback_bar():
-    global is_paused, current_song
-
-    if song_length > 0 and not is_paused and not is_seeking:
-        if pygame.mixer.music.get_busy():
-            elapsed = time.time() - start_time
-            playback_slider.set(int((elapsed / song_length) * 1000))
-        else:
-            if current_song and (time.time() - start_time) > (song_length - 1):
-                current_song = None
-                play_song()
-
-    main_frame.after(200, update_playback_bar)
-
-# Utility
-def sanitize_filename(filename):
-    return re.sub(r'[<>:"/\\|?*]', '_', filename)
-
-# Load local songs
-def load_local_songs():
-    local_songs_list.delete(0, "end")
-    music_files = glob.glob(os.path.join(MUSIC_FOLDER, "*.mp3"))
-    for file in music_files:
-        local_songs_list.insert("end", os.path.basename(file))
-
-# YouTube Search
-search_results = []
-def search_youtube(query, max_results=5):
-    global search_results
-    search_results.clear()
-    results_list.delete(0, "end")
-
-    ydl_opts = {
-        "quiet": True,
-        "default_search": "ytsearch",
-        "extract_flat": True,
-        "force_generic_extractor": True,
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
-
-    for entry in info["entries"]:
-        title, url = entry["title"], entry["url"]
-        search_results.append((title, url))
-        results_list.insert("end", title)
-
-def ytdl_progress_hook(status):
-    if status['status'] == 'downloading':
-        percent = status.get('_percent_str', '').strip()
-        speed = status.get('_speed_str', '')
-        eta = status.get('_eta_str', '')
-        safePrint(f"Downloading: {percent} at {speed} ETA {eta}")
-    elif status['status'] == 'finished':
-        safePrint("Download complete.")
-
-# Download from YouTube
-def download_audio(url, title, downloadType):
-    safe_title = sanitize_filename(title)
-    mp3_path = os.path.join(MUSIC_FOLDER, f"{safe_title}.mp3")
-    mp4_path = os.path.join(MUSIC_FOLDER, f"{safe_title}.mp4")
-
-    ydl_opts_audio = {
-        "format": "bestaudio/best",
-        "outtmpl": mp3_path.replace(".mp3", ".%(ext)s"),
-        "ffmpeg_location": FFMPEG_PATH,
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "256",
-        }],
-        "quiet": True,
-        "logger": logger,
-        "progress_hooks": [ytdl_progress_hook],
-        "noplaylist": True,
-    }
-
-    ydl_opts_video = {
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
-        "outtmpl": mp4_path,
-        "ffmpeg_location": FFMPEG_PATH,
-        "merge_output_format": "mp4",
-        "quiet": True,
-        "logger": logger,
-        "progress_hooks": [ytdl_progress_hook],
-        "noplaylist": True,
-    }
-
-    # download type: 1 = mp3, 2 = both, 3 = mp4
-    if downloadType < 3: # if dl = 1 or 2
-        with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
-            ydl.download([url])
-
-    if downloadType > 1: # if dl = 2 or 3
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts_video) as ydl:
-                ydl.download([url])
-        except Exception as e:
-            safePrint("Video download failed:", e)
-
-    load_local_songs()
-
-def download_selected(downloadType):
-    selected_index = results_list.curselection()
-    if not selected_index:
-        return
-    title, url = search_results[selected_index[0]]
-    threading.Thread(target=download_audio, args=(url, title, downloadType), daemon=True).start()
-
-# Queue Handling
-def set_volume(vol):
-    pygame.mixer.music.set_volume(vol / 100)
-
-def seek_to_position(value):
-    global playback_position, start_time
-    if not current_song:
-        return
-    try:
-        safePrint(f"Seeking to {value}")
-        new_pos = float(value) / 1000 * song_length
-        pygame.mixer.music.play(start=new_pos)
-        playback_position = new_pos
-        start_time = time.time() - new_pos
+        from pypresence import Presence
+        DISCORD_APP_ID = "1331776648890159164"
+        _rpc = Presence(DISCORD_APP_ID)
+        _rpc.connect()
+        rpc = _rpc
     except Exception as e:
-        safePrint("[ERROR] Seek failed:", e)
-
-def update_queue_display():
-    queue_list.delete(0, "end")
-    for song in queue:
-        queue_list.insert("end", os.path.basename(song))
-
-def play_song():
-    global current_song, is_paused, playback_position, song_length, start_time
-
-    if is_paused and current_song:
-        is_paused = False
-        pygame.mixer.music.unpause()
-        start_time = time.time() - playback_position
-        update_discord_status(state="Now Playing", song_title=current_song, paused=False, reset_time=False)
-        return
-
-    if not queue:
-        now_playing_label.config(text="Now Playing: None")
-        update_discord_status(state="Idle", song_title=None)
-        return
-
-    current_song = queue.pop(0)
-    song_path = os.path.join(MUSIC_FOLDER, current_song)
-    try:
-        pygame.mixer.music.load(song_path)
-        pygame.mixer.music.play()
-        song_length = MP3(song_path).info.length
-        playback_position = 0
-        start_time = time.time()
-        now_playing_label.config(text=f"Now Playing: {current_song}")
-        update_discord_status(state="Now Playing", song_title=current_song, paused=False, reset_time=True)
-
-    except Exception as e:
-        safePrint("[ERROR]  playing file:", e)
-        current_song = None
-
-    update_queue_display()
-
-def pause_song():
-    global is_paused, playback_position, current_song
-    if pygame.mixer.music.get_busy():
-        pygame.mixer.music.pause()
-        update_discord_status(state="Paused", song_title=current_song, paused=True)
-        is_paused = True
-        playback_position = time.time() - start_time
-
-def skip_song():
-    global current_song
-    if pygame.mixer.music.get_busy():
-        pygame.mixer.music.stop()
-    play_song()
-
-def previous_song():
-    global current_song
-    if current_song:
-        queue.insert(0, current_song)
-        play_song()
-
-def add_to_queue(position="end"):
-    selected_index = local_songs_list.curselection()
-    if not selected_index:
-        return
-    file_name = local_songs_list.get(selected_index)
-    if position == "now":
-        shouldSkip = current_song != None
-        queue.insert(0, file_name)
-        if shouldSkip:
-            skip_song()
-            return
-        else:
-            update_discord_status(state="Now Playing", song_title=file_name, paused=False, reset_time=True)
-    elif position == "next":
-        queue.insert(0, file_name)
-    else:
-        queue.append(file_name)
-
-    update_queue_display()
-    if not pygame.mixer.music.get_busy():
-        play_song()
-
-# Controls
-Button(controls, text="Play", command=play_song, **DARK_STYLE).pack(side="left", padx=5)
-Button(controls, text="Pause", command=pause_song, **DARK_STYLE).pack(side="left", padx=5)
-Button(controls, text="Skip", command=skip_song, **DARK_STYLE).pack(side="left", padx=5)
-Button(controls, text="Back", command=previous_song, **DARK_STYLE).pack(side="left", padx=5)
-
-# === Discord RPC Setup ===
-try:
-    from pypresence import Presence
-    import atexit
-
-    DISCORD_APP_ID = "1331776648890159164"
-    rpc = Presence(DISCORD_APP_ID)
-    try:
-        rpc.connect()
-    except Exception as e:
-        safePrint(f"[RPC Disabled at connect] {e}")
+        print(f"[RPC Disabled] {e}")
         rpc = None
 
-    rpc_song_start_time = 0
-    rpc_current_song = None
+def cleanup_rpc():
+    global rpc
+    if rpc:
+        try:
+            rpc.clear()
+        except Exception as e:
+            print(f"[RPC ERROR on exit] {e}")
 
-    # === RPC throttle control ===
-    heldRPC = None
-    lastRpcPayloadTime = 0
-    rpcLock = threading.Lock()
-
-    def cleanup_rpc():
-        global rpc
+def rpc_worker():
+    global heldRPC, lastRpcPayloadTime, rpc
+    while True:
         if rpc:
-            try:
-                rpc.clear()
-            except Exception as e:
-                safePrint(f"[RPC ERROR on exit] {e}")
-
-    atexit.register(cleanup_rpc)
-
-    def rpc_worker():
-        global heldRPC, lastRpcPayloadTime, rpc
-        while True:
-            if rpc:
-                with rpcLock:
-                    if heldRPC and (time.time() - lastRpcPayloadTime) >= 15:
-                        try:
-                            rpc.update(**heldRPC)
-                            lastRpcPayloadTime = time.time()
-                            heldRPC = None
-                        except Exception as e:
-                            safePrint(f"[RPC ERROR] {e}")
-                            heldRPC = None
-            time.sleep(1)
-
-    threading.Thread(target=rpc_worker, daemon=True).start()
-
-except Exception as e:
-    rpc = None
-    rpc_song_start_time = 0
-    rpc_current_song = None
-    heldRPC = None
-    rpcLock = threading.Lock()
-    print(f"[RPC Disabled] {e}")
-
-def format_song_title(song_title):
-    if not song_title:
-        return "Idle"
-    name = song_title.replace(".mp3", "")
-    name = re.sub(r"[_%]+", " ", name)
-    return name.strip()
+            with rpcLock:
+                if heldRPC and (time.time() - lastRpcPayloadTime) >= 15:
+                    try:
+                        rpc.update(**heldRPC)
+                        lastRpcPayloadTime = time.time()
+                        heldRPC = None
+                    except Exception as e:
+                        print(f"[RPC ERROR] {e}")
+                        heldRPC = None
+        time.sleep(1)
 
 def update_discord_status(state="Idle", song_title=None, paused=False, reset_time=False):
     global rpc_song_start_time, rpc_current_song, current_song, rpc, heldRPC, rpcLock
-
     if not rpc:
         return
-
     if reset_time or song_title != rpc_current_song:
         rpc_song_start_time = int(time.time())
         rpc_current_song = song_title
-
     payload = {
         "state": f"{format_song_title(current_song)}" if song_title else state,
         "details": state,
         "large_image": "embedded_cover",
         "large_text": "BoomBox by Don",
         "small_image": "flag_of_canada",
-        "small_text": "Made in Canada 🍁",
+        "small_text": "Made in Canada",
         "buttons": [{"label": "Get BoomBox", "url": "https://github.com/Ronnie-Reagan/BoomBox"}]
     }
-
     if not paused and song_title:
         payload["start"] = rpc_song_start_time
-
     with rpcLock:
         heldRPC = payload
 
-# === Startup ===
-update_discord_status()
-load_local_songs()
-update_playback_bar()
-main_frame.mainloop()
+# ------------------------------ Main Window (skinned) ------------------------------
+class BoomBoxWindow(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        # Frameless + translucent
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.resize(760, 920)
+        self._drag_pos = None
+
+        # Mask build
+        self._rebuild_mask()
+
+        # Icon if available
+        icon_path = self.resource_path("favicon-6.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QtGui.QIcon(icon_path))
+
+        # Layouts
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(10)
+
+        # Title + Close
+        title_bar = QtWidgets.QHBoxLayout()
+        self.title_label = QtWidgets.QLabel("BoomBox by Don — PyQt5")
+        self.title_label.setStyleSheet("color:#1a2438; font: 700 12pt 'Segoe UI';")
+        title_bar.addWidget(self.title_label)
+        title_bar.addStretch(1)
+        self.close_btn_rect = QtCore.QRectF()  # painted button; also provide a fallback minimal close
+        close_fallback = QtWidgets.QPushButton("×")
+        close_fallback.setFixedSize(24,24)
+        close_fallback.clicked.connect(self.close)
+        close_fallback.setStyleSheet("background:#e4caca; color:#7a2b2b; border-radius:6px; border:1px solid #7a2b2b; font: 700 12pt 'Segoe UI';")
+        title_bar.addWidget(close_fallback)
+        outer.addLayout(title_bar)
+
+        # Tabs
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { border: 0px; }
+            QTabBar::tab { background:#21252b; color:white; padding:8px 14px; border-top-left-radius:6px; border-top-right-radius:6px; }
+            QTabBar::tab:selected { background:#2b313a; }
+        """)
+        outer.addWidget(self.tabs, 1)
+
+        # Player tab
+        self.player = QtWidgets.QWidget()
+        self.player.setObjectName("player")
+        self.player.setStyleSheet("#player{background-color: rgba(18,18,18,180); border-radius:14px;}")
+        p_lay = QtWidgets.QVBoxLayout(self.player)
+        p_lay.setContentsMargins(16,16,16,16)
+        p_lay.setSpacing(10)
+
+        header = QtWidgets.QLabel("BoomBox by Don")
+        header.setStyleSheet("color:#ff3b3b; font: 700 12pt 'Segoe UI';")
+        p_lay.addWidget(header)
+
+        search_row = QtWidgets.QHBoxLayout()
+        self.search_entry = QtWidgets.QLineEdit()
+        self.search_entry.setPlaceholderText("Search for a song...")
+        self.search_entry.setStyleSheet("""
+            QLineEdit {background:#1e1e1e; color:white; border:1px solid #393939; padding:6px; border-radius:6px;}
+            QLineEdit:focus { border:1px solid #ff3b3b; }
+        """)
+        search_btn = QtWidgets.QPushButton("Search")
+        search_btn.clicked.connect(lambda: self.search_youtube(self.search_entry.text()))
+        search_btn.setStyleSheet(self.btn_style())
+        search_row.addWidget(self.search_entry, 1)
+        search_row.addWidget(search_btn, 0)
+        p_lay.addLayout(search_row)
+
+        self.results_list = QtWidgets.QListWidget()
+        self.results_list.setStyleSheet(self.list_style())
+        self.results_list.setFixedHeight(120)
+        p_lay.addWidget(self.results_list)
+
+        dl_row = QtWidgets.QHBoxLayout()
+        btn_mp3 = QtWidgets.QPushButton("Download MP3")
+        btn_both = QtWidgets.QPushButton("Download BOTH")
+        btn_mp4 = QtWidgets.QPushButton("Download MP4")
+        for b in (btn_mp3, btn_both, btn_mp4):
+            b.setStyleSheet(self.btn_style())
+        btn_mp3.clicked.connect(lambda: self.download_selected(1))
+        btn_both.clicked.connect(lambda: self.download_selected(2))
+        btn_mp4.clicked.connect(lambda: self.download_selected(3))
+        dl_row.addWidget(btn_mp3); dl_row.addWidget(btn_both); dl_row.addWidget(btn_mp4)
+        p_lay.addLayout(dl_row)
+
+        p_lay.addWidget(self.label_red("Local Songs:"))
+        self.local_songs_list = QtWidgets.QListWidget()
+        self.local_songs_list.setStyleSheet(self.list_style())
+        self.local_songs_list.setFixedHeight(260)
+        p_lay.addWidget(self.local_songs_list)
+
+        qrow = QtWidgets.QHBoxLayout()
+        b_next = QtWidgets.QPushButton("Play Next")
+        b_now  = QtWidgets.QPushButton("Play Now")
+        b_end  = QtWidgets.QPushButton("Add to End")
+        for b in (b_next, b_now, b_end): b.setStyleSheet(self.btn_style())
+        b_next.clicked.connect(lambda: self.add_to_queue("next"))
+        b_now.clicked.connect(lambda: self.add_to_queue("now"))
+        b_end.clicked.connect(lambda: self.add_to_queue("end"))
+        qrow.addWidget(b_next); qrow.addWidget(b_now); qrow.addWidget(b_end)
+        p_lay.addLayout(qrow)
+
+        p_lay.addWidget(self.label_red("Queue:"))
+        self.queue_list = QtWidgets.QListWidget()
+        self.queue_list.setStyleSheet(self.list_style())
+        self.queue_list.setFixedHeight(120)
+        p_lay.addWidget(self.queue_list)
+
+        self.now_playing_label = QtWidgets.QLabel("Now Playing: None")
+        self.now_playing_label.setStyleSheet("color:white; font: 700 11pt 'Segoe UI';")
+        p_lay.addWidget(self.now_playing_label)
+
+        vol_row = QtWidgets.QHBoxLayout()
+        vol_row.addWidget(self.label_red("Volume"))
+        self.volume_slider = QtWidgets.QSlider(Qt.Horizontal)
+        self.volume_slider.setRange(0,100)
+        self.volume_slider.setValue(50)
+        self.volume_slider.valueChanged.connect(lambda v: self.set_volume(int(v)))
+        self.volume_slider.setStyleSheet(self.slider_style())
+        vol_row.addWidget(self.volume_slider, 1)
+        p_lay.addLayout(vol_row)
+
+        self.playback_slider = QtWidgets.QSlider(Qt.Horizontal)
+        self.playback_slider.setRange(0,1000)
+        self.playback_slider.setStyleSheet(self.slider_style())
+        self.playback_slider.sliderPressed.connect(self.start_seeking)
+        self.playback_slider.sliderReleased.connect(self.stop_seeking)
+        p_lay.addWidget(self.playback_slider)
+
+        ctrl_row = QtWidgets.QHBoxLayout()
+        b_play = QtWidgets.QPushButton("Play")
+        b_pause= QtWidgets.QPushButton("Pause")
+        b_skip = QtWidgets.QPushButton("Skip")
+        b_back = QtWidgets.QPushButton("Back")
+        for b in (b_play,b_pause,b_skip,b_back): b.setStyleSheet(self.btn_style())
+        b_play.clicked.connect(self.play_song)
+        b_pause.clicked.connect(self.pause_song)
+        b_skip.clicked.connect(self.skip_song)
+        b_back.clicked.connect(self.previous_song)
+        ctrl_row.addWidget(b_play); ctrl_row.addWidget(b_pause); ctrl_row.addWidget(b_skip); ctrl_row.addWidget(b_back)
+        p_lay.addLayout(ctrl_row)
+
+        # Console tab
+        self.console = QtWidgets.QWidget()
+        self.console.setObjectName("console")
+        self.console.setStyleSheet("#console{background-color: rgba(30,30,30,200); border-radius:14px;}")
+        c_lay = QtWidgets.QVBoxLayout(self.console)
+        c_lay.setContentsMargins(16,16,16,16)
+        c_lay.setSpacing(10)
+
+        self.log_text = QtWidgets.QTextEdit()
+        self.log_text.setStyleSheet("QTextEdit{background:#1e1e1e; color:#69ff3b; border:1px solid #333; border-radius:6px;}")
+        c_lay.addWidget(self.log_text, 1)
+
+        self.tabs.addTab(self.player, "Player")
+        console_index = self.tabs.addTab(self.console, "Console Output")
+
+        # Logger redirect
+        self.redirector = ConsoleRedirector(self.log_text, self.tabs, console_index)
+        self.logger = YTDLRedirectLogger(self.redirector)
+        sys.stdout = self.redirector
+        sys.stderr = self.redirector
+
+        # Paths and initial load
+        self.MUSIC_FOLDER = self.select_music_folder()
+        print(f"[INFO] Using music folder: {self.MUSIC_FOLDER}")
+        self.load_local_songs()
+
+        # Playback bar timer
+        self.playback_timer = QtCore.QTimer(self)
+        self.playback_timer.timeout.connect(self.update_playback_bar)
+        self.playback_timer.start(200)
+
+        # RPC
+        start_rpc()
+        t = threading.Thread(target=rpc_worker, daemon=True)
+        t.start()
+        update_discord_status()
+
+    # ---------- Styling helpers ----------
+    def btn_style(self):
+        return ("QPushButton{background:#2b2b2b; color:white; border:1px solid #454545; border-radius:8px; padding:6px 10px;}"
+                "QPushButton:hover{background:#343434;}"
+                "QPushButton:pressed{background:#ff5c5c;}")
+    def list_style(self):
+        return ("QListWidget{background:#1e1e1e; color:white; border:1px solid #393939; border-radius:8px;}"
+                "QListWidget::item:selected{background:#ff3b3b; color:black;}")
+    def slider_style(self):
+        return ("QSlider::groove:horizontal{height:6px; background:#2c2c2c; border-radius:3px;}"
+                "QSlider::handle:horizontal{background:#ff3b3b; width:14px; height:14px; margin:-4px 0; border-radius:7px;}")
+    def label_red(self, text):
+        lab = QtWidgets.QLabel(text)
+        lab.setStyleSheet("color:#ff3b3b; font: 700 10pt 'Segoe UI';")
+        return lab
+
+    # ---------- Custom window shape and paint ----------
+    def _rebuild_mask(self):
+        w, h = 800, 960  # nominal for mask; real size uses margins
+        r = 26
+        path = QtGui.QPainterPath()
+        rect = QtCore.QRectF(10, 10, self.width()-20, self.height()-20)
+        path.addRoundedRect(rect, r, r)
+        region = QtGui.QRegion(path.toFillPolygon().toPolygon())
+        self.setMask(region)
+
+    def paintEvent(self, ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        w, h = self.width(), self.height()
+
+        # Soft shadow
+        for i in range(10):
+            alpha = int(110 * (1 - i / 10))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QtGui.QColor(0,0,0,alpha))
+            rect = QtCore.QRectF(10 - i, 10 - i, w - 20 + 2*i, h - 20 + 2*i)
+            path = QtGui.QPainterPath()
+            path.addRoundedRect(rect, 26 + i, 26 + i)
+            p.drawPath(path)
+
+        # Glass body
+        body = QtCore.QRectF(10, 10, w - 20, h - 20)
+        grad = QtGui.QLinearGradient(body.topLeft(), body.bottomRight())
+        grad.setColorAt(0.0, QtGui.QColor(240, 245, 255, 230))
+        grad.setColorAt(1.0, QtGui.QColor(205, 215, 235, 230))
+        p.setPen(QtGui.QPen(QtGui.QColor(40, 50, 70, 220), 1.2))
+        p.setBrush(grad)
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(body, 26, 26)
+        p.drawPath(path)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._rebuild_mask()
+
+    # Dragging
+    def mousePressEvent(self, ev: QtGui.QMouseEvent):
+        if ev.button() == Qt.LeftButton:
+            self._drag_pos = ev.globalPos() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, ev: QtGui.QMouseEvent):
+        if self._drag_pos and ev.buttons() & Qt.LeftButton:
+            self.move(ev.globalPos() - self._drag_pos)
+
+    def mouseReleaseEvent(self, ev: QtGui.QMouseEvent):
+        self._drag_pos = None
+
+    # ---------- Path helpers ----------
+    def resource_path(self, relative_path):
+        if getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, relative_path)
+
+    def select_music_folder(self):
+        default_dir = os.path.join(os.path.expanduser("~"), "Music")
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select your music directory", default_dir)
+        if not folder:
+            QtWidgets.QMessageBox.information(self, "No Folder Selected", f"Using default: {default_dir}")
+            folder = default_dir
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    # ---------- App logic (ported names preserved) ----------
+    def load_local_songs(self):
+        self.local_songs_list.clear()
+        music_files = glob.glob(os.path.join(self.MUSIC_FOLDER, "*.mp3"))
+        for file in music_files:
+            self.local_songs_list.addItem(os.path.basename(file))
+
+    def ytdl_progress_hook(self, status):
+        if status['status'] == 'downloading':
+            percent = status.get('_percent_str', '').strip()
+            speed = status.get('_speed_str', '')
+            eta = status.get('_eta_str', '')
+            print(f"Downloading: {percent} at {speed} ETA {eta}")
+        elif status['status'] == 'finished':
+            print("Download complete.")
+
+    def search_youtube(self, query, max_results=5):
+        global search_results
+        search_results.clear()
+        self.results_list.clear()
+
+        ydl_opts = {
+            "quiet": True,
+            "default_search": "ytsearch",
+            "extract_flat": True,
+            "force_generic_extractor": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+        for entry in info.get("entries", []):
+            title, url = entry["title"], entry["url"]
+            search_results.append((title, url))
+            self.results_list.addItem(title)
+
+    def download_selected(self, downloadType):
+        selected = self.results_list.currentRow()
+        if selected < 0: return
+        title, url = search_results[selected]
+        threading.Thread(target=self.download_audio, args=(url, title, downloadType), daemon=True).start()
+
+    def download_audio(self, url, title, downloadType):
+        safe_title = sanitize_filename(title)
+        mp3_path = os.path.join(self.MUSIC_FOLDER, f"{safe_title}.mp3")
+        mp4_path = os.path.join(self.MUSIC_FOLDER, f"{safe_title}.mp4")
+
+        ydl_opts_audio = {
+            "format": "bestaudio/best",
+            "outtmpl": mp3_path.replace(".mp3", ".%(ext)s"),
+            "ffmpeg_location": FFMPEG_PATH,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "256",
+            }],
+            "quiet": True,
+            "logger": self.logger,
+            "progress_hooks": [self.ytdl_progress_hook],
+            "noplaylist": True,
+        }
+        ydl_opts_video = {
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+            "outtmpl": mp4_path,
+            "ffmpeg_location": FFMPEG_PATH,
+            "merge_output_format": "mp4",
+            "quiet": True,
+            "logger": self.logger,
+            "progress_hooks": [self.ytdl_progress_hook],
+            "noplaylist": True,
+        }
+
+        if downloadType < 3:
+            with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
+                ydl.download([url])
+        if downloadType > 1:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts_video) as ydl:
+                    ydl.download([url])
+            except Exception as e:
+                print("Video download failed:", e)
+
+        self.load_local_songs()
+
+    # --- Queue/Playback functions (names preserved) ---
+    def set_volume(self, vol):
+        pygame.mixer.music.set_volume(vol / 100)
+
+    def start_seeking(self):
+        global is_seeking
+        is_seeking = True
+
+    def stop_seeking(self):
+        global is_seeking
+        is_seeking = False
+        self.seek_to_position(self.playback_slider.value())
+
+    def seek_to_position(self, value):
+        global playback_position, start_time, current_song, song_length
+        if not current_song: return
+        try:
+            print(f"Seeking to {value}")
+            new_pos = float(value) / 1000 * song_length
+            pygame.mixer.music.play(start=new_pos)
+            playback_position = new_pos
+            start_time = time.time() - new_pos
+        except Exception as e:
+            print("[ERROR] Seek failed:", e)
+
+    def update_queue_display(self):
+        self.queue_list.clear()
+        for song in queue:
+            self.queue_list.addItem(os.path.basename(song))
+
+    def play_song(self):
+        global current_song, is_paused, playback_position, song_length, start_time, queue
+        if is_paused and current_song:
+            is_paused = False
+            pygame.mixer.music.unpause()
+            start_time = time.time() - playback_position
+            update_discord_status(state="Now Playing", song_title=current_song, paused=False, reset_time=False)
+            return
+        if not queue:
+            self.now_playing_label.setText("Now Playing: None")
+            update_discord_status(state="Idle", song_title=None)
+            return
+        current_song = queue.pop(0)
+        song_path = os.path.join(self.MUSIC_FOLDER, current_song)
+        try:
+            pygame.mixer.music.load(song_path)
+            pygame.mixer.music.play()
+            song_length = MP3(song_path).info.length
+            playback_position = 0
+            start_time = time.time()
+            self.now_playing_label.setText(f"Now Playing: {current_song}")
+            update_discord_status(state="Now Playing", song_title=current_song, paused=False, reset_time=True)
+        except Exception as e:
+            print("[ERROR]  playing file:", e)
+            current_song = None
+        self.update_queue_display()
+
+    def pause_song(self):
+        global is_paused, playback_position, current_song, start_time
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.pause()
+            update_discord_status(state="Paused", song_title=current_song, paused=True)
+            is_paused = True
+            playback_position = time.time() - start_time
+
+    def skip_song(self):
+        global current_song
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
+        self.play_song()
+
+    def previous_song(self):
+        global current_song, queue
+        if current_song:
+            queue.insert(0, current_song)
+            self.play_song()
+
+    def add_to_queue(self, position="end"):
+        selected = self.local_songs_list.currentRow()
+        if selected < 0: return
+        file_name = self.local_songs_list.item(selected).text()
+        if position == "now":
+            shouldSkip = current_song is not None
+            queue.insert(0, file_name)
+            if shouldSkip:
+                self.skip_song()
+                return
+            else:
+                update_discord_status(state="Now Playing", song_title=file_name, paused=False, reset_time=True)
+        elif position == "next":
+            queue.insert(0, file_name)
+        else:
+            queue.append(file_name)
+        self.update_queue_display()
+        if not pygame.mixer.music.get_busy():
+            self.play_song()
+
+    # Playback bar with queue advance
+    def update_playback_bar(self):
+        global is_paused, current_song, song_length, start_time
+        if song_length > 0 and not is_paused and not is_seeking:
+            if pygame.mixer.music.get_busy():
+                elapsed = time.time() - start_time
+                self.playback_slider.blockSignals(True)
+                self.playback_slider.setValue(int((elapsed / song_length) * 1000))
+                self.playback_slider.blockSignals(False)
+            else:
+                if current_song and (time.time() - start_time) > (song_length - 1):
+                    # Finished, play next
+                    _prev = current_song
+                    current_song = None
+                    self.play_song()
+
+    # Graceful close
+    def closeEvent(self, e: QtGui.QCloseEvent):
+        cleanup_rpc()
+        super().closeEvent(e)
+
+# ------------------------------ Main ------------------------------
+def main():
+    app = QtWidgets.QApplication(sys.argv)
+    app.setApplicationName("BoomBox by Don")
+    win = BoomBoxWindow()
+    # Center
+    screen = app.primaryScreen().availableGeometry()
+    win.move(screen.center() - win.rect().center())
+    win.show()
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
