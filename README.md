@@ -76,6 +76,7 @@ pygame
 pydub
 mutagen
 pypresence
+pyqt5
 ```
 ---
 
