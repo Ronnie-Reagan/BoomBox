@@ -1,0 +1,4 @@
+these files must exist
+THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffmpeg.exe
+THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffprobe.exe
+THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffplay.exe
