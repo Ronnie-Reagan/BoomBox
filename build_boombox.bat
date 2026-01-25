@@ -22,7 +22,7 @@ echo "|____|____|____|____|____|____|____|____|____|____|____|____|____|____|___
 pyinstaller ^
   --onefile ^
   --windowed ^
-  --name "BoomBox 2.0" ^
+  --name "BoomBox 2.1" ^
   --icon="favicon.ico" ^
   --add-data="THIS_FOLDER_MUST_BE_HERE;." ^
   --add-data="favicon.ico;." ^
