@@ -44,7 +44,7 @@ Standalone EXE: `BoomBox 2.0.exe`
 
 ## Build Instructions
 
-Use the [Auto Builder](blob:https://github.com/2797dcc2-36b8-43f9-894d-48fe17d58d03) if youre lazy, it will do everything for you including fetching ffmpeg and the most recent repo files
+Use the [Auto Builder](https://github.com/Ronnie-Reagan/BoomBox/blob/main/RemoteBuilder.py) if youre lazy, it will do everything for you including fetching ffmpeg and the most recent repo files
 
 ### 1. Dependencies
 
