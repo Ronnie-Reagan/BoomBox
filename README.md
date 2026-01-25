@@ -1,94 +1,82 @@
 # 🎧 BoomBox
 
-### A desktop music app for downloading and playing YouTube songs — all in one place.
+A desktop music app for searching, downloading, and playing YouTube songs.
 
 ---
 
-## 🧭 Introduction
+## Introduction
 
-BoomBox started as a desktop version of a Discord bot... but it evolved.
+Originally a desktop Discord bot clone, BoomBox now offers:
 
-It now features:
-
-- 🔍 YouTube search with multi-result support  
-- 🎵 MP3 & MP4 download options  
-- 📂 Files saved directly to your system’s Music folder  
-- 🎛️ Playback controls: pause, seek, volume, queue system  
-- 💄 Custom punk rock + hip hop dark UI built on tkinter  
-- 🧊 Fully self-contained: just one EXE 
+- YouTube search with multiple results  
+- MP3 & MP4 download options  
+- Files saved to your system’s Music folder  
+- Playback controls: play, pause, seek, volume, queue  
+- Dark-themed tkinter GUI  
+- Fully self-contained executable
 
 ---
 
-## 📦 Download
+## Download
 
-👉 [**Download the latest release here**](https://github.com/Ronnie-Reagan/BoomBox/releases/tag/BoomBox)
+[Download the latest release](https://github.com/Ronnie-Reagan/BoomBox/releases/tag/BoomBox)  
 
-Just download the standalone exe: `BoomBox 2.0.exe`.
+Standalone EXE: `BoomBox 2.0.exe`
 
 ---
 
-## 🧠 Notes for Users
+## User Notes
 
-- Music is saved to your Windows **Music** folder (`C:\Users\<you>\Music`)  
+- Music is saved to your **Music** folder (`C:\Users\<username>\Music`)  
 - Songs are named after the YouTube video title  
-- If you download too many songs too fast, **YouTube may rate-limit you**  
-  - Tip: Stick to **15–20 songs per hour**  
-- There's **no "cancel download"** yet — close the app to stop one in progress  
+- YouTube may rate-limit downloads if done too fast (recommend 15–20 songs per hour)  
+- There is no “cancel download” option; close the app to stop a download in progress  
 
 ---
 
-## 🛠️ For Developers
+## Developer Notes
 
-Hey boss — this ain’t Ivy League code, but it runs clean.
-
-The codebase is:  
-- ✅ Easy to understand  
-- ✅ Fully hackable  
-- ✅ GUI included (no console window)  
-- ✅ Tested with PyInstaller onefile build  
-
-Pull requests welcome. Respect the code, or at least vibe with it.
+- Code is readable, hackable, and GUI included  
+- Tested with PyInstaller onefile build  
+- Pull requests welcome
 
 ---
 
-## 🚀 Build It Yourself
+## Build Instructions
 
-- **Huge Note:** You will have to download ffmpeg and the other two binaries manually.
-- You must then place the three binaries into the bin folder, a few layers inside the `THIS_FOLDER_MUS..` folder.
-- Example Directory Tree Below
+### 1. Dependencies
 
-### 1. 📦 Dependencies
-FFMPEG IS REQUIRED:
-https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
-follow the layout shown below!
+FFmpeg is required:  
+[https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip)
 
-Install with python dependencies with:
+Python dependencies:
 
 ```
 pip install -r requirements.txt
 ```
 
-This uses:
+Contents of `requirements.txt`:
 
 ```
-yt-dlp
-pygame
-pydub
-mutagen
-pypresence
-pyqt5
+yt-dlp==2025.12.8
+pygame==2.6.1
+pydub==0.25.1
+mutagen==1.47.0
+pypresence==4.6.1
+PyQt5==5.15.11
 ```
+
 ---
 
-### 2. 🔨 Build the App
+### 2. Build the App
 
-Run the included build script:
+Run the build script:
 
 ```
 build_boombox.bat
 ```
 
-This uses:
+`pyinstaller` command used:
 
 ```
 pyinstaller ^
@@ -103,16 +91,15 @@ pyinstaller ^
 main.py
 ```
 
-This produces:  
-✅ `dist/BoomBox.exe`  
-✅ Fully portable  
-✅ No installer required  
+Output:  
+- `dist/BoomBox.exe`  
+- Fully portable, no installer required  
 
 ---
 
+### Suggested Directory Structure
 
-#### Suggested Working Directory - Use this as a reference to ensure you have proper placement.
-```
+```bash
 C:.
 │   build_boombox.bat
 │   favicon.ico
@@ -123,62 +110,18 @@ C:.
 │
 └───THIS_FOLDER_MUST_BE_HERE
     └───ffmpeg-full
-        │   LICENSE
-        │   README.txt
-        │
         ├───bin
         │       ffmpeg.exe
         │       ffplay.exe
         │       ffprobe.exe
-        │
         ├───doc
-        │       bootstrap.min.css
-        │       community.html
-        │       default.css
-        │       developer.html
-        │       faq.html
-        │       fate.html
-        │       ffmpeg-all.html
-        │       ffmpeg-bitstream-filters.html
-        │       ffmpeg-codecs.html
-        │       ffmpeg-devices.html
-        │       ffmpeg-filters.html
-        │       ffmpeg-formats.html
-        │       ffmpeg-protocols.html
-        │       ffmpeg-resampler.html
-        │       ffmpeg-scaler.html
-        │       ffmpeg-utils.html
-        │       ffmpeg.html
-        │       ffplay-all.html
-        │       ffplay.html
-        │       ffprobe-all.html
-        │       ffprobe.html
-        │       general.html
-        │       git-howto.html
-        │       libavcodec.html
-        │       libavdevice.html
-        │       libavfilter.html
-        │       libavformat.html
-        │       libavutil.html
-        │       libswresample.html
-        │       libswscale.html
-        │       mailing-list-faq.html
-        │       nut.html
-        │       platform.html
-        │       style.min.css
-        │
+        │       [FFmpeg docs]
         └───presets
-                libvpx-1080p.ffpreset
-                libvpx-1080p50_60.ffpreset
-                libvpx-360p.ffpreset
-                libvpx-720p.ffpreset
-                libvpx-720p50_60.ffpreset
+                [FFmpeg preset files]
 ```
 
 ---
 
-## 🏴‍☠️ License
+## License
 
-> All rights ignored.  
-> Built by a pirate, for pirates.  
-> Just vibe responsibly.
+No restrictions. Built by a pirate, for pirates. Use responsibly.
