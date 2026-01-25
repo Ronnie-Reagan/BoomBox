@@ -1,7 +1,10 @@
 THIS_FOLDER_MUST_BE_HERE/ffmpeg-full
 ideas.md
 __pycache__
+2026/__pycache__
+2026/THIS_FOLDER_MUST_BE_HERE/ffmpeg-full
 build
 dist
 BoomBox 2.0.spec
 ogmain.py
+.vscode

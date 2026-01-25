@@ -19,17 +19,30 @@ def list_local_songs(folder):
     return all_songs
 
 def get_ffmpeg_path() -> str:
+    """
+    Returns the path to ffmpeg binaries.
+
+    - Uses internal PyInstaller path if frozen.
+    - Falls back to external path in 2026/THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin
+    """
+    # If running as a PyInstaller bundle
     if getattr(sys, 'frozen', False):
-        internal_path = os.path.join(sys._MEIPASS, "ffmpeg-full", "bin")
+        internal_path = os.path.join(sys._MEIPASS, "THIS_FOLDER_MUST_BE_HERE", "ffmpeg-full", "bin")
         if os.path.exists(os.path.join(internal_path, "ffmpeg.exe")):
             return internal_path
 
-    base_path = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
-    external_path = os.path.join(base_path, "THIS_FOLDER_MUST_BE_HERE", "ffmpeg-full", "bin")
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+    # If running from source
+    external_path = os.path.join(base_path, "2026", "THIS_FOLDER_MUST_BE_HERE", "ffmpeg-full", "bin")
     if os.path.exists(os.path.join(external_path, "ffmpeg.exe")):
         return external_path
 
-    messagebox.showerror("Missing FFmpeg", "FFmpeg binaries not found in internal or external paths.\n\nExpected:\n- ffmpeg-full/bin/ffmpeg.exe")
+    messagebox.showerror(
+        "Missing FFmpeg",
+        "FFmpeg binaries not found in internal or external paths.\n\n"
+        "Expected:\n- 2026/THIS_FOLDER_MUST_BE_HERE/ffmpeg-full/bin/ffmpeg.exe"
+    )
     sys.exit(1)
 
 def check_js_runtime():
