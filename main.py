@@ -11,6 +11,18 @@ import time
 import sys
 import io
 import json
+import shutil
+
+if not shutil.which("node") and not shutil.which("deno"):
+    from tkinter import messagebox
+    messagebox.showerror(
+        "Missing JS Runtime",
+        "YouTube downloads require Node.js or Deno.\n"
+        "Please install one and restart BoomBox."
+    )
+
+AUDIO_EXTS = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
+ALL_LOCAL_SONGS = []      # full filenames only
 
 MUSIC_FOLDER, VIDEO_FOLDER = None, None
 # Default paths (can be overridden by settings)
@@ -75,7 +87,6 @@ LISTBOX_STYLE = {
     "font": default_font
 }
 
-
 SCALE_STYLE = {
     "bg": "#121212",
     "highlightthickness": 0,
@@ -104,7 +115,6 @@ def get_ffmpeg_path():
     from tkinter import messagebox
     messagebox.showerror("Missing FFmpeg", "FFmpeg binaries not found in internal or external paths.\n\nExpected:\n- ffmpeg-full/bin/ffmpeg.exe")
     sys.exit(1)
-
 
 FFMPEG_PATH = get_ffmpeg_path()
 
@@ -162,7 +172,6 @@ class ConsoleRedirector(io.TextIOBase):
     def flush(self):
         pass
 
-
 class YTDLRedirectLogger:
     def __init__(self, redirector):
         self.redirector = redirector
@@ -175,7 +184,6 @@ class YTDLRedirectLogger:
 
     def error(self, msg):
         self.redirector.write("ERROR: " + msg + "\n")
-
 
 def safePrint(*args, **kwargs):
     message = " ".join(str(arg) for arg in args)
@@ -202,7 +210,6 @@ song_length = 0
 start_time = 0
 is_seeking = False
 
-
 # UI Setup
 root = Tk()
 root.title("BoomBox by Don")
@@ -214,11 +221,10 @@ notebook = Notebook(root)
 notebook.pack(fill="both", expand=True)
 
 main_frame = Frame(notebook, bg="#121212")
-log_frame = Frame(notebook, bg="#1e1e1e")
 
+log_frame = Frame(notebook, bg="#1e1e1e")
 log_text = Text(log_frame, bg="#1e1e1e", fg="#69ff3b", insertbackground="#69ff3b", font=("Consolas", 8), wrap="none")
 log_text.pack(fill="both", expand=True, padx=5, pady=5)
-
 redirector = ConsoleRedirector(log_text)
 logger = YTDLRedirectLogger(redirector)
 
@@ -232,8 +238,7 @@ notebook.add(log_frame, text="Console Output")
 settings_frame = Frame(notebook, bg="#121212")
 notebook.add(settings_frame, text="Settings")
 
-# Function to browse folder
-
+# Function to browse folder for selecting directories
 def browse_folder(entry_widget):
     folder = filedialog.askdirectory()
     if folder:
@@ -271,11 +276,9 @@ def save_settings():
     safePrint(f"Settings saved:\nMusic: {MUSIC_FOLDER}\nVideo: {VIDEO_FOLDER}")
     load_local_songs()
 
-
 Button(settings_frame, text="Save Settings", command=save_settings, **DARK_STYLE).pack(pady=20)
 
 main_frame.configure(bg="#121212")  # Matte black
-
 
 Label(main_frame, text="BoomBox by Don", **LABEL_STYLE).pack()
 search_entry = Entry(main_frame, width=50, **ENTRY_STYLE)
@@ -341,9 +344,9 @@ volume_slider = Scale(
 volume_slider.set(50)
 volume_slider.pack(side="left", fill="x", expand=True)
 
-
 playback_slider = Scale(main_frame, from_=0, to=1000, orient=HORIZONTAL, length=400, showvalue=False, **SCALE_STYLE)
 playback_slider.pack(pady=(2, 15))
+
 def start_seeking(event):
     global is_seeking
     is_seeking = True
@@ -356,8 +359,6 @@ def stop_seeking(event):
 playback_slider.bind("<ButtonPress-1>", start_seeking)
 playback_slider.bind("<ButtonRelease-1>", stop_seeking)
 
-
-
 controls = Frame(main_frame, bg="#121212")
 controls.pack(pady=(2, 5))
 
@@ -369,7 +370,6 @@ def save_settings():
     os.makedirs(VIDEO_FOLDER, exist_ok=True)
     safePrint(f"Settings saved:\nMusic: {MUSIC_FOLDER}\nVideo: {VIDEO_FOLDER}")
     load_local_songs()  # refresh local songs
-
 
 # playtime bar with seek, handles next song queueing
 def update_playback_bar():
@@ -392,10 +392,20 @@ def sanitize_filename(filename):
 
 # Load local songs
 def load_local_songs():
+    global ALL_LOCAL_SONGS
+
+    ALL_LOCAL_SONGS.clear()
     local_songs_list.delete(0, "end")
-    music_files = glob.glob(os.path.join(MUSIC_FOLDER, "*.mp3"))
-    for file in music_files:
-        local_songs_list.insert("end", os.path.basename(file))
+
+    for root_dir, _, files in os.walk(MUSIC_FOLDER):
+        for f in files:
+            if f.lower().endswith(AUDIO_EXTS):
+                ALL_LOCAL_SONGS.append(f)
+
+    ALL_LOCAL_SONGS.sort(key=str.lower)
+
+    for f in ALL_LOCAL_SONGS:
+        local_songs_list.insert("end", f)
 
 # YouTube Search
 search_results = []
@@ -436,6 +446,7 @@ def download_audio(url, title, downloadType):
 
     ydl_opts_audio = {
         "format": "bestaudio/best",
+        "js_runtimes": {"node": {}, "deno": {}},
         "outtmpl": mp3_path.replace(".mp3", ".%(ext)s"),
         "ffmpeg_location": FFMPEG_PATH,
         "postprocessors": [{
@@ -451,6 +462,7 @@ def download_audio(url, title, downloadType):
 
     ydl_opts_video = {
         "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "js_runtimes": {"node": {}, "deno": {}},
         "outtmpl": mp4_path,
         "ffmpeg_location": FFMPEG_PATH,
         "merge_output_format": "mp4",
@@ -497,7 +509,6 @@ def seek_to_position(value):
         start_time = time.time() - new_pos
     except Exception as e:
         safePrint("[ERROR] Seek failed:", e)
-
 
 def update_queue_display():
     queue_list.delete(0, "end")
@@ -575,10 +586,131 @@ Button(controls, text="Play", command=play_song, **DARK_STYLE).pack(side="left",
 Button(controls, text="Pause", command=pause_song, **DARK_STYLE).pack(side="left", padx=5)
 Button(controls, text="Skip", command=skip_song, **DARK_STYLE).pack(side="left", padx=5)
 Button(controls, text="Back", command=previous_song, **DARK_STYLE).pack(side="left", padx=5)
+
+# --- Search System ---
+
 def trigger_search(event=None):
     search_youtube(search_entry.get())
 
-# Bind the Return key to the Entry widget
+def filter_local_songs(query: str):
+    local_songs_list.delete(0, "end")
+
+    if not query:
+        for f in ALL_LOCAL_SONGS:
+            local_songs_list.insert("end", f)
+        return
+
+    q = query.lower()
+
+    matches = [f for f in ALL_LOCAL_SONGS if q in f.lower()]
+
+    for f in matches:
+        local_songs_list.insert("end", f)
+
+def on_search_change(event=None):
+    text = search_entry.get().strip()
+
+    # Ignore placeholder text
+    if text == "" or text == "Search for a song...":
+        # If no query, show all songs once
+        local_songs_list.delete(0, "end")
+        for f in ALL_LOCAL_SONGS:
+            local_songs_list.insert("end", f)
+        return
+
+    filter_local_songs(text)
+
+# --- Local Songs List ---
+local_last_song = None
+
+def on_local_focus_in(event):
+    global local_last_song
+    size = local_songs_list.size()
+    if size == 0:
+        return
+
+    # Try to select the last selected song by name
+    index_to_select = 0
+    if local_last_song:
+        try:
+            index_to_select = local_songs_list.get(0, "end").index(local_last_song)
+        except ValueError:
+            index_to_select = 0
+
+    local_songs_list.selection_clear(0, "end")
+    local_songs_list.selection_set(index_to_select)
+    local_songs_list.see(index_to_select)
+
+def on_local_select(event):
+    global local_last_song
+    selected = local_songs_list.curselection()
+    if selected:
+        local_last_song = local_songs_list.get(selected[0])
+
+def local_activate(event=None):
+    """Add the selected song in local list to the end of the queue."""
+    selected = local_songs_list.curselection()
+    if not selected:
+        return
+    add_to_queue("end")
+
+# --- Queue List ---
+queue_last_song = None
+
+def on_queue_focus_in(event):
+    global queue_last_song
+    size = queue_list.size()
+    if size == 0:
+        return
+
+    index_to_select = 0
+    if queue_last_song:
+        try:
+            index_to_select = queue_list.get(0, "end").index(queue_last_song)
+        except ValueError:
+            index_to_select = 0
+
+    queue_list.selection_clear(0, "end")
+    queue_list.selection_set(index_to_select)
+    queue_list.see(index_to_select)
+
+def on_queue_select(event):
+    global queue_last_song
+    selected = queue_list.curselection()
+    if selected:
+        queue_last_song = queue_list.get(selected[0])
+
+def queue_activate(event=None):
+    """Move selected queue item to be next and skip current song."""
+    selected_index = queue_list.curselection()
+    if not selected_index:
+        return
+
+    file_name = queue_list.get(selected_index)
+
+    # Remove from current position
+    try:
+        queue.remove(file_name)
+    except ValueError:
+        return
+
+    # Insert to be next in line (after current song)
+    queue.insert(0, file_name)
+
+    # Skip current song to play the newly selected next
+    skip_song()
+
+
+# Binds
+search_entry.bind("<KeyRelease>", on_search_change)
+local_songs_list.bind("<FocusIn>", on_local_focus_in)
+local_songs_list.bind("<<ListboxSelect>>", on_local_select)
+local_songs_list.bind("<Double-Button-1>", local_activate)
+local_songs_list.bind("<Return>", local_activate)
+queue_list.bind("<FocusIn>", on_queue_focus_in)
+queue_list.bind("<<ListboxSelect>>", on_queue_select)
+queue_list.bind("<Double-Button-1>", queue_activate)
+queue_list.bind("<Return>", queue_activate)
 search_entry.bind("<Return>", trigger_search)
 
 load_local_songs()
