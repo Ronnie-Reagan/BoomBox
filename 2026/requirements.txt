@@ -4,3 +4,4 @@ pydub==0.25.1
 mutagen==1.47.0
 pypresence==4.6.1
 PyQt5==5.15.11
+pyinstaller==6.17.0
